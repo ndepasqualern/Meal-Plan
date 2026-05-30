@@ -55,10 +55,10 @@ const FOODS = {
     { id: "v18", name: "Yellow Squash (1 cup)",        emoji: "🌽", cal: 18,  protein: 1,  carbs: 4,  fat: 0  },
   ],
   "Carbs & Grains": [
-    { id: "c1",  name: "Rolled Oats (½ cup)",       emoji: "🥣", cal: 150, protein: 5,  carbs: 27, fat: 3  },
+    { id: "c1",  name: "Rolled Oats (½ cup)",       emoji: "🥣", cal: 150, protein: 5,  carbs: 27, fat: 3  , gluten: true },
     { id: "c2",  name: "Brown Rice (½ cup cooked)", emoji: "🍚", cal: 110, protein: 2,  carbs: 23, fat: 1  },
-    { id: "c3",  name: "Triscuits (8 crackers)",    emoji: "🍘", cal: 130, protein: 3,  carbs: 21, fat: 5  },
-    { id: "c4",  name: "Whole Wheat Tortilla (1)",  emoji: "🫓", cal: 130, protein: 4,  carbs: 24, fat: 3  },
+    { id: "c3",  name: "Triscuits (8 crackers)",    emoji: "🍘", cal: 130, protein: 3,  carbs: 21, fat: 5  , gluten: true },
+    { id: "c4",  name: "Whole Wheat Tortilla (1)",  emoji: "🫓", cal: 130, protein: 4,  carbs: 24, fat: 3  , gluten: true },
   ],
   "Pantry": [
     { id: "p1",  name: "Peanut Butter (2 tbsp)",    emoji: "🥜", cal: 190, protein: 7,  carbs: 7,  fat: 16 },
@@ -67,13 +67,21 @@ const FOODS = {
     { id: "p4",  name: "Hummus (¼ cup)",            emoji: "🫘", cal: 105, protein: 5,  carbs: 12, fat: 5  },
     { id: "p5",  name: "Hummus (3 tbsp)",           emoji: "🫘", cal: 75,  protein: 4,  carbs: 9,  fat: 4  },
     { id: "p6",  name: "Olive Oil (1 tbsp)",        emoji: "🫒", cal: 120, protein: 0,  carbs: 0,  fat: 14 },
-    { id: "p7",  name: "Soy Sauce (1 tbsp)",        emoji: "🥄", cal: 10,  protein: 1,  carbs: 1,  fat: 0  },
+    { id: "p7",  name: "Soy Sauce (1 tbsp)",        emoji: "🥄", cal: 10,  protein: 1,  carbs: 1,  fat: 0  , gluten: true },
     { id: "p8",  name: "Salsa (2 tbsp)",            emoji: "🍅", cal: 10,  protein: 0,  carbs: 2,  fat: 0  },
     { id: "p9",  name: "Cinnamon / Seasoning",      emoji: "🧂", cal: 5,   protein: 0,  carbs: 1,  fat: 0  },
   ],
 };
 
 const BASE_FOODS = Object.values(FOODS).flat();
+// Foods that contain gluten (by ID) — used for warnings and filtering
+const GLUTEN_IDS = new Set(["c1","c3","c4","p7"]);
+function isGluten(id, customFoods=[]) {
+  if (GLUTEN_IDS.has(id)) return true;
+  const custom = customFoods.find(f => f.id === id);
+  if (custom?.gluten === true) return true;
+  return false;
+}
 
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
@@ -133,13 +141,52 @@ function AddFoodModal({ onAdd, onClose }) {
   const [protein, setProtein] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
+  const [lookup, setLookup] = useState("");
+  const [looking, setLooking] = useState(false);
+  const [lookupError, setLookupError] = useState("");
+  const [containsGluten, setContainsGluten] = useState(false);
 
   const canSave = name.trim() && cal !== "" && protein !== "" && carbs !== "" && fat !== "";
 
   const save = () => {
     const id = "custom_" + Date.now();
-    onAdd(cat, { id, name: name.trim(), emoji, cal: +cal, protein: +protein, carbs: +carbs, fat: +fat });
+    onAdd(cat, { id, name: name.trim(), emoji, cal: +cal, protein: +protein, carbs: +carbs, fat: +fat, gluten: containsGluten });
     onClose();
+  };
+
+  const lookupFood = async () => {
+    if (!lookup.trim()) return;
+    setLooking(true);
+    setLookupError("");
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 300,
+          messages: [{
+            role: "user",
+            content: `Give me the nutrition info for: "${lookup.trim()}". Respond ONLY with a JSON object, no markdown, no explanation. Format: {"name":"Food Name (serving size)","cal":000,"protein":0,"carbs":0,"fat":0,"emoji":"🍎","category":"Veggies"} where category is one of: Proteins, Dairy, Fruits, Veggies, Carbs & Grains, Pantry, My Foods. Use realistic standard serving sizes. All numbers must be integers.`
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+      const clean = text.replace(/\`\`\`json|\`\`\`/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setName(parsed.name || lookup.trim());
+      setCal(String(parsed.cal || ""));
+      setProtein(String(parsed.protein || ""));
+      setCarbs(String(parsed.carbs || ""));
+      setFat(String(parsed.fat || ""));
+      if (parsed.emoji) setEmoji(parsed.emoji);
+      if (parsed.category) setCat(parsed.category);
+      setLookup("");
+    } catch(e) {
+      setLookupError("Couldn't find that food — try a different name or enter manually.");
+    }
+    setLooking(false);
   };
 
   const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", background: "#fafafa" };
@@ -154,6 +201,27 @@ function AddFoodModal({ onAdd, onClose }) {
             <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#1a1a2e" }}>Add a New Food</div>
           </div>
           <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 99, width: 32, height: 32, fontSize: 16, cursor: "pointer", color: "#555" }}>✕</button>
+        </div>
+
+        {/* AI Lookup */}
+        <div style={{ background: "linear-gradient(135deg, #faf5ff, #f3e8ff)", border: "1.5px solid #d8b4fe", borderRadius: 12, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#9333ea", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>✨ AI Lookup</div>
+          <div style={{ fontSize: 12, color: "#6b21a8", marginBottom: 8 }}>Type any food and AI will fill in the nutrition info automatically</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={lookup}
+              onChange={e => setLookup(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && lookupFood()}
+              placeholder='e.g. "Greek yogurt 1 cup" or "grilled salmon 5oz"'
+              style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #d8b4fe", fontSize: 13, fontFamily: "inherit", outline: "none", background: "#fff" }}
+            />
+            <button onClick={lookupFood} disabled={looking || !lookup.trim()} style={{
+              padding: "0 14px", borderRadius: 10, border: "none", flexShrink: 0,
+              background: looking ? "#e9d5ff" : "linear-gradient(135deg, #9333ea, #7c3aed)",
+              color: "#fff", fontSize: 13, fontWeight: 800, cursor: looking ? "default" : "pointer", fontFamily: "inherit"
+            }}>{looking ? "..." : "Look up"}</button>
+          </div>
+          {lookupError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>{lookupError}</div>}
         </div>
 
         {/* Emoji picker */}
@@ -182,6 +250,21 @@ function AddFoodModal({ onAdd, onClose }) {
           ))}
         </div>
 
+        {/* Gluten toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, padding: "10px 14px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 10 }}>
+          <span style={{ fontSize: 16 }}>🌾</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>Contains Gluten?</div>
+            <div style={{ fontSize: 10, color: "#a16207" }}>Flag this food so it shows the gluten warning</div>
+          </div>
+          <button onClick={() => setContainsGluten(g => !g)} style={{
+            width: 44, height: 24, borderRadius: 99, border: "none", cursor: "pointer",
+            background: containsGluten ? "#d97706" : "#e2e8f0", position: "relative", transition: "background 0.2s"
+          }}>
+            <span style={{ position: "absolute", top: 2, left: containsGluten ? 22 : 2, width: 20, height: 20, borderRadius: 99, background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px #0003" }} />
+          </button>
+        </div>
+
         <button onClick={save} disabled={!canSave} style={{
           width: "100%", padding: "13px", borderRadius: 12,
           background: canSave ? "linear-gradient(135deg, #9333ea, #7c3aed)" : "#e2e8f0",
@@ -199,19 +282,24 @@ function FoodPicker({ slot, selectedIds, customFoods, onDone, onAddCustom, onClo
   const [picked, setPicked] = useState([...selectedIds]);
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [gfOnly, setGfOnly] = useState(false);
 
   const totals = sumFoods(picked);
+  const customFoodsList = Object.values(customFoods).flat();
 
   const allFoodsWithCustom = {
     ...FOODS,
     ...(Object.keys(customFoods).length > 0 ? customFoods : {}),
   };
 
-  const filtered = search.trim()
-    ? Object.entries(allFoodsWithCustom).map(([cat, items]) => ({
-        cat, items: items.filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
-      })).filter(g => g.items.length > 0)
-    : Object.entries(allFoodsWithCustom).map(([cat, items]) => ({ cat, items }));
+  const filtered = Object.entries(allFoodsWithCustom).map(([cat, items]) => ({
+    cat,
+    items: items.filter(f => {
+      const matchSearch = !search.trim() || f.name.toLowerCase().includes(search.toLowerCase());
+      const matchGF = !gfOnly || !isGluten(f.id, customFoodsList);
+      return matchSearch && matchGF;
+    })
+  })).filter(g => g.items.length > 0);
 
   return (
     <>
@@ -243,13 +331,20 @@ function FoodPicker({ slot, selectedIds, customFoods, onDone, onAddCustom, onClo
             <span style={{ background: "#6b728018", color: "#6b7280", borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{totals.fat}g fat</span>
           </div>
 
-          {/* Search */}
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search all foods…"
-            style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", background: "#f8fafc" }}
-          />
+          {/* Search + GF filter */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search all foods…"
+              style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", background: "#f8fafc" }}
+            />
+            <button onClick={() => setGfOnly(g => !g)} style={{
+              padding: "0 12px", borderRadius: 10, border: `2px solid ${gfOnly ? "#16a34a" : "#e2e8f0"}`,
+              background: gfOnly ? "#f0fdf4" : "#f8fafc", fontSize: 11, fontWeight: 800,
+              color: gfOnly ? "#16a34a" : "#888", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0
+            }}>🌾 GF only</button>
+          </div>
         </div>
 
         {/* Food list */}
@@ -272,7 +367,13 @@ function FoodPicker({ slot, selectedIds, customFoods, onDone, onAddCustom, onClo
                   }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }}>{food.emoji}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a2e" }}>{food.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#1a1a2e" }}>{food.name}</span>
+                        {isGluten(food.id, customFoodsList)
+                          ? <span style={{ fontSize: 9, fontWeight: 800, background: "#fef3c7", color: "#d97706", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.05em" }}>GLUTEN</span>
+                          : <span style={{ fontSize: 9, fontWeight: 800, background: "#f0fdf4", color: "#16a34a", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.05em" }}>GF</span>
+                        }
+                      </div>
                       <div style={{ fontSize: 10, color: "#888", marginTop: 1 }}>
                         {food.cal} cal · {food.protein}g protein · {food.carbs}g carbs · {food.fat}g fat
                       </div>
@@ -324,6 +425,7 @@ function MealSlotCard({ slot, foodIds, onEdit }) {
   const { label, emoji, accent } = SLOT_META[slot];
   const totals = sumFoods(foodIds);
   const foods = foodIds.map(id => getFood(id)).filter(Boolean);
+  const hasGluten = foodIds.some(id => isGluten(id));
 
   const grouped = foods.reduce((acc, f) => {
     acc[f.id] = acc[f.id] ? { ...f, count: acc[f.id].count + 1 } : { ...f, count: 1 };
@@ -370,6 +472,18 @@ function MealSlotCard({ slot, foodIds, onEdit }) {
       )}
       {unique.length === 0 && (
         <div style={{ fontSize: 12, color: "#aaa", fontStyle: "italic" }}>No foods added yet — tap + Add</div>
+      )}
+      {hasGluten && unique.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "5px 10px" }}>
+          <span style={{ fontSize: 13 }}>🌾</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#d97706" }}>Contains gluten</span>
+        </div>
+      )}
+      {!hasGluten && unique.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "5px 10px" }}>
+          <span style={{ fontSize: 13 }}>✅</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#16a34a" }}>Gluten-free</span>
+        </div>
       )}
     </div>
   );
