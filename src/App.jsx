@@ -414,13 +414,13 @@ function ShoppingList() {
 
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 // ── IMPORT/EXPORT MODAL ──────────────────────────────────────────────────────
-function DataModal({ plan, customFoods, onImport, onClose }) {
+function DataModal({ plan, customFoods, weightLog, onImport, onClose }) {
   const [mode, setMode] = useState("menu"); // menu | export | import
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const exportData = JSON.stringify({ plan, customFoods, version: 1 }, null, 2);
+  const exportData = JSON.stringify({ plan, customFoods, weightLog, version: 1 }, null, 2);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(exportData).then(() => {
@@ -525,11 +525,193 @@ function DataModal({ plan, customFoods, onImport, onClose }) {
   );
 }
 
+// ── WEIGHT TRACKER ───────────────────────────────────────────────────────────
+function WeightTracker({ weightLog, settings, onSave }) {
+  const [inputWeight, setInputWeight] = useState("");
+  const [inputDate, setInputDate] = useState(new Date().toISOString().slice(0,10));
+  const [unit, setUnit] = useState("lbs");
+
+  const sortedLog = [...weightLog].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const latest = sortedLog[sortedLog.length - 1];
+  const first = sortedLog[0];
+  const totalLost = first && latest ? (first.weight - latest.weight).toFixed(1) : null;
+  const goalWeight = settings.goalWeight || null;
+  const toGo = goalWeight && latest ? (latest.weight - goalWeight).toFixed(1) : null;
+
+  const addEntry = () => {
+    const w = parseFloat(inputWeight);
+    if (!w || !inputDate) return;
+    const existing = weightLog.findIndex(e => e.date === inputDate);
+    let newLog;
+    if (existing >= 0) {
+      newLog = weightLog.map((e, i) => i === existing ? { ...e, weight: w } : e);
+    } else {
+      newLog = [...weightLog, { date: inputDate, weight: w }];
+    }
+    onSave(newLog);
+    setInputWeight("");
+  };
+
+  const removeEntry = (date) => {
+    onSave(weightLog.filter(e => e.date !== date));
+  };
+
+  // Simple SVG line chart
+  const chartData = sortedLog.slice(-30); // last 30 entries
+  const W = 320, H = 140, PAD = 32;
+  let chart = null;
+  if (chartData.length >= 2) {
+    const weights = chartData.map(e => e.weight);
+    const minW = Math.min(...weights) - 2;
+    const maxW = Math.max(...weights) + 2;
+    const xScale = (i) => PAD + (i / (chartData.length - 1)) * (W - PAD * 2);
+    const yScale = (w) => PAD + (1 - (w - minW) / (maxW - minW)) * (H - PAD * 2);
+
+    const points = chartData.map((e, i) => `${xScale(i)},${yScale(e.weight)}`).join(" ");
+    const areaPoints = `${xScale(0)},${H - 8} ` + points + ` ${xScale(chartData.length-1)},${H - 8}`;
+
+    // goal line
+    const goalY = goalWeight ? yScale(goalWeight) : null;
+    const goalInRange = goalWeight && goalWeight >= minW && goalWeight <= maxW;
+
+    // x-axis labels: first, middle, last
+    const labelIdxs = [0, Math.floor((chartData.length-1)/2), chartData.length-1];
+
+    chart = (
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        <defs>
+          <linearGradient id="wgrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#16a34a" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#16a34a" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => {
+          const y = PAD + t * (H - PAD * 2);
+          const w = minW + (1 - t) * (maxW - minW);
+          return (
+            <g key={t}>
+              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#e2e8f0" strokeWidth="1" />
+              <text x={PAD - 4} y={y + 4} fontSize="8" fill="#94a3b8" textAnchor="end">{w.toFixed(0)}</text>
+            </g>
+          );
+        })}
+        {/* Goal line */}
+        {goalInRange && (
+          <>
+            <line x1={PAD} y1={goalY} x2={W - PAD} y2={goalY} stroke="#f97316" strokeWidth="1.5" strokeDasharray="4,3" />
+            <text x={W - PAD + 2} y={goalY + 4} fontSize="8" fill="#f97316">goal</text>
+          </>
+        )}
+        {/* Area fill */}
+        <polygon points={areaPoints} fill="url(#wgrad)" />
+        {/* Line */}
+        <polyline points={points} fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Dots */}
+        {chartData.map((e, i) => (
+          <circle key={e.date} cx={xScale(i)} cy={yScale(e.weight)} r="3" fill="#16a34a" stroke="#fff" strokeWidth="1.5" />
+        ))}
+        {/* X labels */}
+        {labelIdxs.map(i => (
+          <text key={i} x={xScale(i)} y={H - 4} fontSize="8" fill="#94a3b8" textAnchor="middle">
+            {chartData[i].date.slice(5)}
+          </text>
+        ))}
+      </svg>
+    );
+  }
+
+  return (
+    <div>
+      {/* Stats row */}
+      {latest && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "10px 14px", flex: 1, minWidth: 80 }}>
+            <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Current</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#1a1a2e", fontFamily: "'Playfair Display', serif" }}>{latest.weight}</div>
+            <div style={{ fontSize: 10, color: "#888" }}>{unit}</div>
+          </div>
+          {totalLost !== null && parseFloat(totalLost) !== 0 && (
+            <div style={{ background: parseFloat(totalLost) > 0 ? "#f0fdf4" : "#fff7ed", border: `1.5px solid ${parseFloat(totalLost) > 0 ? "#86efac" : "#fed7aa"}`, borderRadius: 12, padding: "10px 14px", flex: 1, minWidth: 80 }}>
+              <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>Lost</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: parseFloat(totalLost) > 0 ? "#16a34a" : "#f97316", fontFamily: "'Playfair Display', serif" }}>{totalLost > 0 ? totalLost : Math.abs(totalLost)}</div>
+              <div style={{ fontSize: 10, color: "#888" }}>{unit} total</div>
+            </div>
+          )}
+          {toGo !== null && parseFloat(toGo) > 0 && (
+            <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", flex: 1, minWidth: 80 }}>
+              <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>To Go</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#2563eb", fontFamily: "'Playfair Display', serif" }}>{toGo}</div>
+              <div style={{ fontSize: 10, color: "#888" }}>{unit} to goal</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Chart */}
+      {chart ? (
+        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, padding: "14px 14px 8px", marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+            Progress {chartData.length < sortedLog.length ? `(last 30 entries)` : ""}
+          </div>
+          {chart}
+        </div>
+      ) : (
+        <div style={{ background: "#f8fafc", border: "1.5px dashed #e2e8f0", borderRadius: 14, padding: "24px", textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 24, marginBottom: 6 }}>📉</div>
+          <div style={{ fontSize: 13, color: "#888" }}>Log at least 2 entries to see your progress chart</div>
+        </div>
+      )}
+
+      {/* Log entry */}
+      <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, padding: "14px", marginBottom: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#16a34a", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Log Weight</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: "#888", marginBottom: 4 }}>Date</div>
+            <input type="date" value={inputDate} onChange={e => setInputDate(e.target.value)}
+              style={{ width: "100%", padding: "9px 10px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ width: 90 }}>
+            <div style={{ fontSize: 10, color: "#888", marginBottom: 4 }}>Weight ({unit})</div>
+            <input type="number" value={inputWeight} onChange={e => setInputWeight(e.target.value)}
+              placeholder="0.0" step="0.1"
+              style={{ width: "100%", padding: "9px 10px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <button onClick={addEntry} style={{ height: 40, padding: "0 14px", borderRadius: 10, background: "linear-gradient(135deg, #16a34a, #15803d)", color: "#fff", border: "none", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>+ Log</button>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          {["lbs","kg"].map(u => (
+            <button key={u} onClick={() => setUnit(u)} style={{ padding: "4px 12px", borderRadius: 99, border: `1.5px solid ${unit === u ? "#16a34a" : "#e2e8f0"}`, background: unit === u ? "#f0fdf4" : "#fafafa", fontSize: 11, fontWeight: 700, color: unit === u ? "#16a34a" : "#888", cursor: "pointer", fontFamily: "inherit" }}>{u}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Log history */}
+      {sortedLog.length > 0 && (
+        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 14, padding: "14px" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>History</div>
+          {[...sortedLog].reverse().map(entry => (
+            <div key={entry.date} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 13, color: "#555", fontFamily: "'Lora', serif" }}>{entry.date}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#1a1a2e" }}>{entry.weight} {unit}</span>
+                <button onClick={() => removeEntry(entry.date)} style={{ background: "none", border: "none", color: "#cbd5e1", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SETTINGS MODAL ───────────────────────────────────────────────────────────
 function SettingsModal({ settings, onSave, onClose }) {
   const [name, setName] = useState(settings.name || "");
   const [calTarget, setCalTarget] = useState(settings.calTarget || 1450);
   const [goal, setGoal] = useState(settings.goal || "lose");
+  const [goalWeight, setGoalWeight] = useState(settings.goalWeight || "");
 
   const GOALS = [
     { id: "lose", label: "Lose weight", sub: "500 cal deficit" },
@@ -578,7 +760,14 @@ function SettingsModal({ settings, onSave, onClose }) {
           <span style={{ fontSize: 12, color: "#888" }}>cal/day</span>
         </div>
 
-        <button onClick={() => { onSave({ name, calTarget, goal }); onClose(); }} style={{ width: "100%", padding: "13px", borderRadius: 12, background: "linear-gradient(135deg, #f97316, #ea580c)", color: "#fff", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>Goal Weight (optional)</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+          <input type="number" value={goalWeight} onChange={e => setGoalWeight(e.target.value)} placeholder="e.g. 140" step="0.1"
+            style={{ width: 100, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+          <span style={{ fontSize: 12, color: "#888" }}>lbs/kg — shows as a target line on your weight chart</span>
+        </div>
+
+        <button onClick={() => { onSave({ name, calTarget, goal, goalWeight: goalWeight ? parseFloat(goalWeight) : "" }); onClose(); }} style={{ width: "100%", padding: "13px", borderRadius: 12, background: "linear-gradient(135deg, #f97316, #ea580c)", color: "#fff", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
           Save Settings
         </button>
       </div>
@@ -590,6 +779,7 @@ function SettingsModal({ settings, onSave, onClose }) {
 const LS_PLAN = "mealplan_plan_v1";
 const LS_CUSTOM = "mealplan_custom_v1";
 const LS_SETTINGS = "mealplan_settings_v1";
+const LS_WEIGHT = "mealplan_weight_v1";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -603,7 +793,8 @@ export default function App() {
   const [dayIdx, setDayIdx] = useState(0);
   const [plan, setPlan] = useState(() => loadFromStorage(LS_PLAN, DEFAULT_PLAN));
   const [customFoods, setCustomFoods] = useState(() => loadFromStorage(LS_CUSTOM, {}));
-  const [settings, setSettings] = useState(() => loadFromStorage(LS_SETTINGS, { name: "", calTarget: 1450, goal: "lose" }));
+  const [settings, setSettings] = useState(() => loadFromStorage(LS_SETTINGS, { name: "", calTarget: 1450, goal: "lose", goalWeight: "" }));
+  const [weightLog, setWeightLog] = useState(() => loadFromStorage(LS_WEIGHT, []));
   const [picker, setPicker] = useState(null);
   const [showDataModal, setShowDataModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -627,6 +818,11 @@ export default function App() {
     try { localStorage.setItem(LS_SETTINGS, JSON.stringify(newSettings)); } catch {}
   };
 
+  const saveWeightLog = (log) => {
+    setWeightLog(log);
+    try { localStorage.setItem(LS_WEIGHT, JSON.stringify(log)); } catch {}
+  };
+
   const flashSaved = () => {
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 1500);
@@ -644,9 +840,10 @@ export default function App() {
     saveCustomFoods(newCustom);
   };
 
-  const handleImport = ({ plan: newPlan, customFoods: newCustom }) => {
+  const handleImport = ({ plan: newPlan, customFoods: newCustom, weightLog: newWeight }) => {
     savePlan(newPlan);
     saveCustomFoods(newCustom);
+    if (newWeight) saveWeightLog(newWeight);
   };
 
   const totals = dayTotals(currentMeals);
@@ -682,7 +879,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-          {[{id:"week",label:"Week Plan"},{id:"shop",label:"Shopping"}].map(t => (
+          {[{id:"week",label:"Week Plan"},{id:"weight",label:"Weight"},{id:"shop",label:"Shopping"}].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: tab === t.id ? "#fff" : "transparent",
               color: tab === t.id ? "#1a1a2e" : "#94a3b8",
@@ -740,6 +937,7 @@ export default function App() {
           </div>
         )}
 
+        {tab === "weight" && <WeightTracker weightLog={weightLog} settings={settings} onSave={saveWeightLog} />}
         {tab === "shop" && <ShoppingList />}
       </div>
 
@@ -748,7 +946,7 @@ export default function App() {
       )}
 
       {showDataModal && (
-        <DataModal plan={plan} customFoods={customFoods} onImport={handleImport} onClose={() => setShowDataModal(false)} />
+        <DataModal plan={plan} customFoods={customFoods} weightLog={weightLog} onImport={handleImport} onClose={() => setShowDataModal(false)} />
       )}
 
       {showSettings && (
