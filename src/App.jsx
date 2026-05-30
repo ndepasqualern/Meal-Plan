@@ -525,9 +525,71 @@ function DataModal({ plan, customFoods, onImport, onClose }) {
   );
 }
 
+// ── SETTINGS MODAL ───────────────────────────────────────────────────────────
+function SettingsModal({ settings, onSave, onClose }) {
+  const [name, setName] = useState(settings.name || "");
+  const [calTarget, setCalTarget] = useState(settings.calTarget || 1450);
+  const [goal, setGoal] = useState(settings.goal || "lose");
+
+  const GOALS = [
+    { id: "lose", label: "Lose weight", sub: "500 cal deficit" },
+    { id: "maintain", label: "Maintain weight", sub: "balanced intake" },
+    { id: "gain", label: "Gain / build muscle", sub: "500 cal surplus" },
+  ];
+
+  const suggestedTargets = { lose: [1200, 1300, 1400, 1500, 1600, 1700], maintain: [1600, 1800, 2000, 2200, 2400], gain: [2000, 2200, 2400, 2600, 2800, 3000] };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#000c", display: "flex", alignItems: "flex-end" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 600, margin: "0 auto", padding: "20px 16px 36px", boxShadow: "0 -8px 40px #0005", maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#f97316", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Personalize</div>
+            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Playfair Display', serif", color: "#1a1a2e" }}>My Settings</div>
+          </div>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 99, width: 32, height: 32, fontSize: 16, cursor: "pointer", color: "#555" }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>Your Name (optional)</div>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Nicole" style={{ width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box", marginBottom: 18 }} />
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Goal</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 18 }}>
+          {GOALS.map(g => (
+            <div key={g.id} onClick={() => setGoal(g.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: 10, border: `2px solid ${goal === g.id ? "#f97316" : "#e2e8f0"}`, background: goal === g.id ? "#fff7ed" : "#fafafa", cursor: "pointer" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1a1a2e" }}>{g.label}</div>
+                <div style={{ fontSize: 11, color: "#888" }}>{g.sub}</div>
+              </div>
+              {goal === g.id && <span style={{ color: "#f97316", fontSize: 18 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>Daily Calorie Target</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+          {suggestedTargets[goal].map(cal => (
+            <button key={cal} onClick={() => setCalTarget(cal)} style={{ padding: "6px 14px", borderRadius: 99, border: `2px solid ${calTarget === cal ? "#f97316" : "#e2e8f0"}`, background: calTarget === cal ? "#fff7ed" : "#fafafa", fontSize: 12, fontWeight: 700, color: calTarget === cal ? "#f97316" : "#555", cursor: "pointer", fontFamily: "inherit" }}>{cal}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+          <span style={{ fontSize: 12, color: "#888" }}>Custom:</span>
+          <input type="number" value={calTarget} onChange={e => setCalTarget(+e.target.value)} style={{ width: 90, padding: "7px 10px", borderRadius: 10, border: "1.5px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+          <span style={{ fontSize: 12, color: "#888" }}>cal/day</span>
+        </div>
+
+        <button onClick={() => { onSave({ name, calTarget, goal }); onClose(); }} style={{ width: "100%", padding: "13px", borderRadius: 12, background: "linear-gradient(135deg, #f97316, #ea580c)", color: "#fff", border: "none", fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+          Save Settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 const LS_PLAN = "mealplan_plan_v1";
 const LS_CUSTOM = "mealplan_custom_v1";
+const LS_SETTINGS = "mealplan_settings_v1";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -541,14 +603,14 @@ export default function App() {
   const [dayIdx, setDayIdx] = useState(0);
   const [plan, setPlan] = useState(() => loadFromStorage(LS_PLAN, DEFAULT_PLAN));
   const [customFoods, setCustomFoods] = useState(() => loadFromStorage(LS_CUSTOM, {}));
+  const [settings, setSettings] = useState(() => loadFromStorage(LS_SETTINGS, { name: "", calTarget: 1450, goal: "lose" }));
   const [picker, setPicker] = useState(null);
   const [showDataModal, setShowDataModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
 
-  // Keep global food lookup in sync
   _customFoods = Object.values(customFoods).flat();
 
-  // Auto-save to localStorage on every change
   const savePlan = (newPlan) => {
     setPlan(newPlan);
     try { localStorage.setItem(LS_PLAN, JSON.stringify(newPlan)); } catch {}
@@ -558,6 +620,11 @@ export default function App() {
   const saveCustomFoods = (newCustom) => {
     setCustomFoods(newCustom);
     try { localStorage.setItem(LS_CUSTOM, JSON.stringify(newCustom)); } catch {}
+  };
+
+  const saveSettings = (newSettings) => {
+    setSettings(newSettings);
+    try { localStorage.setItem(LS_SETTINGS, JSON.stringify(newSettings)); } catch {}
   };
 
   const flashSaved = () => {
@@ -583,13 +650,18 @@ export default function App() {
   };
 
   const totals = dayTotals(currentMeals);
-  const calPct = Math.min(100, Math.round(totals.cal / 1450 * 100));
-  const calColor = totals.cal < 1350 ? "#F59E0B" : totals.cal > 1550 ? "#EF4444" : "#16A34A";
+  const target = settings.calTarget || 1450;
+  const calPct = Math.min(100, Math.round(totals.cal / target * 100));
+  const calColor = totals.cal < target * 0.93 ? "#F59E0B" : totals.cal > target * 1.07 ? "#EF4444" : "#16A34A";
+
+  // Day button color uses per-person target
+  const dayCalColor = (cal) => cal > target * 1.07 ? "#ef4444" : cal < target * 0.93 ? "#f59e0b" : "#16a34a";
+
+  const goalLabel = { lose: "Lose weight", maintain: "Maintain", gain: "Build muscle" }[settings.goal] || "Lose weight";
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #fafaf7 0%, #f0f4ff 100%)", fontFamily: "'Lora', Georgia, serif" }}>
 
-      {/* Saved toast */}
       {savedToast && (
         <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 2000, background: "#16a34a", color: "#fff", borderRadius: 99, padding: "6px 16px", fontSize: 12, fontWeight: 700, boxShadow: "0 4px 16px #16a34a44", pointerEvents: "none" }}>
           ✓ Saved
@@ -600,13 +672,14 @@ export default function App() {
       <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", padding: "24px 20px 16px", color: "#fff" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "#94a3b8", textTransform: "uppercase", marginBottom: 2 }}>Your Personal</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "#94a3b8", textTransform: "uppercase", marginBottom: 2 }}>{settings.name ? `${settings.name}'s` : "Your"} Personal</div>
             <div style={{ fontSize: 24, fontFamily: "'Playfair Display', serif", fontWeight: 700 }}>Meal Plan</div>
-            <div style={{ fontSize: 12, color: "#60a5fa", marginTop: 2 }}>1,400–1,500 cal · High Protein · Lose 20 lbs</div>
+            <div style={{ fontSize: 12, color: "#60a5fa", marginTop: 2 }}>{target.toLocaleString()} cal · {goalLabel}</div>
           </div>
-          <button onClick={() => setShowDataModal(true)} style={{ background: "#ffffff18", border: "1.5px solid #ffffff30", borderRadius: 10, padding: "7px 11px", fontSize: 11, fontWeight: 700, color: "#cbd5e1", cursor: "pointer", fontFamily: "inherit", marginTop: 4, flexShrink: 0 }}>
-            💾 Backup
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+            <button onClick={() => setShowSettings(true)} style={{ background: "#ffffff18", border: "1.5px solid #ffffff30", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#cbd5e1", cursor: "pointer", fontFamily: "inherit" }}>⚙️ Settings</button>
+            <button onClick={() => setShowDataModal(true)} style={{ background: "#ffffff18", border: "1.5px solid #ffffff30", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#cbd5e1", cursor: "pointer", fontFamily: "inherit" }}>💾 Backup</button>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
           {[{id:"week",label:"Week Plan"},{id:"shop",label:"Shopping"}].map(t => (
@@ -636,7 +709,7 @@ export default function App() {
                     cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0
                   }}>
                     <div>{d.slice(0,3)}</div>
-                    <div style={{ fontSize: 10, fontWeight: 400, color: dayIdx === i ? "#94a3b8" : t.cal > 1550 ? "#ef4444" : t.cal < 1350 ? "#f59e0b" : "#16a34a" }}>{t.cal}</div>
+                    <div style={{ fontSize: 10, fontWeight: 400, color: dayIdx === i ? "#94a3b8" : dayCalColor(t.cal) }}>{t.cal}</div>
                   </button>
                 );
               })}
@@ -646,12 +719,7 @@ export default function App() {
             <div style={{ fontSize: 11, color: "#888", marginBottom: 12 }}>Tap "+ Add" or "Edit" · Use "+ New Food" inside to add your own</div>
 
             {MEAL_SLOTS.map(slot => (
-              <MealSlotCard
-                key={slot}
-                slot={slot}
-                foodIds={currentMeals[slot] || []}
-                onEdit={() => setPicker(slot)}
-              />
+              <MealSlotCard key={slot} slot={slot} foodIds={currentMeals[slot] || []} onEdit={() => setPicker(slot)} />
             ))}
 
             <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)", borderRadius: 14, padding: "14px 18px", marginTop: 4, color: "#fff" }}>
@@ -666,7 +734,7 @@ export default function App() {
                 <div style={{ width: calPct + "%", background: calColor, height: "100%", borderRadius: 99, transition: "width 0.5s" }} />
               </div>
               <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
-                {totals.cal} / 1,450 cal · {calPct < 95 ? "⬆ a bit low" : calPct > 107 ? "⬇ slightly over" : "✓ on track"}
+                {totals.cal} / {target.toLocaleString()} cal · {calPct < 93 ? "⬆ a bit low" : calPct > 107 ? "⬇ slightly over" : "✓ on track"}
               </div>
             </div>
           </div>
@@ -676,27 +744,18 @@ export default function App() {
       </div>
 
       {picker && (
-        <FoodPicker
-          slot={picker}
-          selectedIds={currentMeals[picker] || []}
-          customFoods={customFoods}
-          onDone={ids => updateSlot(picker, ids)}
-          onAddCustom={addCustomFood}
-          onClose={() => setPicker(null)}
-        />
+        <FoodPicker slot={picker} selectedIds={currentMeals[picker] || []} customFoods={customFoods} onDone={ids => updateSlot(picker, ids)} onAddCustom={addCustomFood} onClose={() => setPicker(null)} />
       )}
 
       {showDataModal && (
-        <DataModal
-          plan={plan}
-          customFoods={customFoods}
-          onImport={handleImport}
-          onClose={() => setShowDataModal(false)}
-        />
+        <DataModal plan={plan} customFoods={customFoods} onImport={handleImport} onClose={() => setShowDataModal(false)} />
+      )}
+
+      {showSettings && (
+        <SettingsModal settings={settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />
       )}
 
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Lora:wght@400;700&display=swap');`}</style>
     </div>
   );
 }
-
