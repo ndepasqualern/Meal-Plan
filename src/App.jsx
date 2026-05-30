@@ -203,27 +203,6 @@ function AddFoodModal({ onAdd, onClose }) {
           <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 99, width: 32, height: 32, fontSize: 16, cursor: "pointer", color: "#555" }}>✕</button>
         </div>
 
-        {/* AI Lookup */}
-        <div style={{ background: "linear-gradient(135deg, #faf5ff, #f3e8ff)", border: "1.5px solid #d8b4fe", borderRadius: 12, padding: "12px 14px", marginBottom: 18 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#9333ea", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>✨ AI Lookup</div>
-          <div style={{ fontSize: 12, color: "#6b21a8", marginBottom: 8 }}>Type any food and AI will fill in the nutrition info automatically</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={lookup}
-              onChange={e => setLookup(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && lookupFood()}
-              placeholder='e.g. "Greek yogurt 1 cup" or "grilled salmon 5oz"'
-              style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #d8b4fe", fontSize: 13, fontFamily: "inherit", outline: "none", background: "#fff" }}
-            />
-            <button onClick={lookupFood} disabled={looking || !lookup.trim()} style={{
-              padding: "0 14px", borderRadius: 10, border: "none", flexShrink: 0,
-              background: looking ? "#e9d5ff" : "linear-gradient(135deg, #9333ea, #7c3aed)",
-              color: "#fff", fontSize: 13, fontWeight: 800, cursor: looking ? "default" : "pointer", fontFamily: "inherit"
-            }}>{looking ? "..." : "Look up"}</button>
-          </div>
-          {lookupError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>{lookupError}</div>}
-        </div>
-
         {/* Emoji picker */}
         <label style={labelStyle}>Icon</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
@@ -248,6 +227,27 @@ function AddFoodModal({ onAdd, onClose }) {
               <input type="number" min="0" value={val} onChange={e => setter(e.target.value)} placeholder="0" style={inputStyle} />
             </div>
           ))}
+        </div>
+
+        {/* AI Lookup */}
+        <div style={{ background: "linear-gradient(135deg, #faf5ff, #f3e8ff)", border: "1.5px solid #d8b4fe", borderRadius: 12, padding: "12px 14px", marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#9333ea", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>✨ AI Lookup — fill fields automatically</div>
+          <div style={{ fontSize: 12, color: "#6b21a8", marginBottom: 8 }}>Type any food and AI will fill in the nutrition info for you</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={lookup}
+              onChange={e => setLookup(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && lookupFood()}
+              placeholder='e.g. "Greek yogurt 1 cup" or "grilled salmon 5oz"'
+              style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #d8b4fe", fontSize: 13, fontFamily: "inherit", outline: "none", background: "#fff" }}
+            />
+            <button onClick={lookupFood} disabled={looking || !lookup.trim()} style={{
+              padding: "0 14px", borderRadius: 10, border: "none", flexShrink: 0,
+              background: looking ? "#e9d5ff" : "linear-gradient(135deg, #9333ea, #7c3aed)",
+              color: "#fff", fontSize: 13, fontWeight: 800, cursor: looking ? "default" : "pointer", fontFamily: "inherit"
+            }}>{looking ? "..." : "Look up"}</button>
+          </div>
+          {lookupError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>{lookupError}</div>}
         </div>
 
         {/* Gluten toggle */}
