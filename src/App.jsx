@@ -306,10 +306,15 @@ function FoodPicker({ slot, selectedIds, customFoods, onDone, onAddCustom, onClo
   const totals = sumFoods(picked);
   const customFoodsList = Object.values(customFoods).flat();
 
-  const allFoodsWithCustom = {
-    ...FOODS,
-    ...(Object.keys(customFoods).length > 0 ? customFoods : {}),
-  };
+  // Merge custom foods into base categories without overwriting existing items
+  const allFoodsWithCustom = Object.entries({ ...FOODS }).reduce((acc, [cat, items]) => {
+    acc[cat] = customFoods[cat] ? [...items, ...customFoods[cat]] : items;
+    return acc;
+  }, {});
+  // Add any custom-only categories (e.g. "My Foods") not in base FOODS
+  Object.entries(customFoods).forEach(([cat, items]) => {
+    if (!allFoodsWithCustom[cat]) allFoodsWithCustom[cat] = items;
+  });
 
   const filtered = Object.entries(allFoodsWithCustom).map(([cat, items]) => ({
     cat,
