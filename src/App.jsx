@@ -159,32 +159,51 @@ function AddFoodModal({ onAdd, onClose }) {
     setLooking(true);
     setLookupError("");
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 300,
-          messages: [{
-            role: "user",
-            content: `Give me the nutrition info for: "${lookup.trim()}". Respond ONLY with a JSON object, no markdown, no explanation. Format: {"name":"Food Name (serving size)","cal":000,"protein":0,"carbs":0,"fat":0,"emoji":"🍎","category":"Veggies"} where category is one of: Proteins, Dairy, Fruits, Veggies, Carbs & Grains, Pantry, My Foods. Use realistic standard serving sizes. All numbers must be integers.`
-          }]
-        })
-      });
-      const data = await response.json();
-      const text = data.content?.[0]?.text || "";
-      const clean = text.replace(/\`\`\`json|\`\`\`/g, "").trim();
-      const parsed = JSON.parse(clean);
-      setName(parsed.name || lookup.trim());
-      setCal(String(parsed.cal || ""));
-      setProtein(String(parsed.protein || ""));
-      setCarbs(String(parsed.carbs || ""));
-      setFat(String(parsed.fat || ""));
-      if (parsed.emoji) setEmoji(parsed.emoji);
-      if (parsed.category) setCat(parsed.category);
+      // Use USDA FoodData Central free API (no key needed for basic search)
+      const searchRes = await fetch(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(lookup.trim())}&pageSize=1&api_key=DEMO_KEY`
+      );
+      const searchData = await searchRes.json();
+      const food = searchData.foods?.[0];
+      if (!food) throw new Error("Not found");
+
+      const getNutrient = (id) => {
+        const n = food.foodNutrients?.find(n => n.nutrientId === id);
+        return n ? Math.round(n.value) : 0;
+      };
+
+      // USDA nutrient IDs: 1008=calories, 1003=protein, 1005=carbs, 1004=fat
+      const cal = getNutrient(1008);
+      const protein = getNutrient(1003);
+      const carbs = getNutrient(1005);
+      const fat = getNutrient(1004);
+
+      // Pick emoji based on category guess
+      const desc = food.description?.toLowerCase() || "";
+      let guessEmoji = "⭐";
+      let guessCat = "My Foods";
+      if (desc.match(/chicken|turkey|beef|pork|fish|salmon|tuna|shrimp|egg|protein/)) { guessEmoji = "🍗"; guessCat = "Proteins"; }
+      else if (desc.match(/milk|cheese|yogurt|dairy|cream/)) { guessEmoji = "🧀"; guessCat = "Dairy"; }
+      else if (desc.match(/apple|banana|berry|fruit|orange|grape|mango/)) { guessEmoji = "🍎"; guessCat = "Fruits"; }
+      else if (desc.match(/broccoli|spinach|carrot|veggie|vegetable|pepper|mushroom|squash|zucchini/)) { guessEmoji = "🥦"; guessCat = "Veggies"; }
+      else if (desc.match(/rice|oat|bread|pasta|grain|tortilla|cracker|wheat/)) { guessEmoji = "🍚"; guessCat = "Carbs & Grains"; }
+      else if (desc.match(/oil|butter|sauce|dressing|spice|seasoning|nut|peanut/)) { guessEmoji = "🫒"; guessCat = "Pantry"; }
+
+      // Clean up the name — USDA names are verbose, trim to reasonable length
+      const rawName = food.description || lookup.trim();
+      const cleanName = rawName.length > 40 ? rawName.slice(0, 40) + "…" : rawName;
+      const servingNote = food.servingSize ? ` (${food.servingSize}${food.servingSizeUnit || "g"})` : " (100g)";
+
+      setName(cleanName + servingNote);
+      setCal(String(cal));
+      setProtein(String(protein));
+      setCarbs(String(carbs));
+      setFat(String(fat));
+      setEmoji(guessEmoji);
+      setCat(guessCat);
       setLookup("");
     } catch(e) {
-      setLookupError("Couldn't find that food — try a different name or enter manually.");
+      setLookupError("Couldn't find that food — try a simpler name, or enter the numbers manually.");
     }
     setLooking(false);
   };
